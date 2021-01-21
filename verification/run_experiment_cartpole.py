@@ -1,7 +1,9 @@
+import os
 from typing import List, Tuple
 
 from ray.rllib.agents.ppo import ppo
 
+import utils
 from training.tune_train_PPO_cartpole import get_PPO_config
 from agents.ray_utils import convert_ray_policy_to_sequential
 from verification.experiments_nn_analysis import Experiment
@@ -34,12 +36,7 @@ class CartpoleExperiment(Experiment):
         # self.use_rounding = False
         self.rounding_value = 1024
         self.time_horizon = 300
-        self.nn_path = "/home/edoardo/ray_results/tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00001_1_cost_fn=1,tau=0.001_2021-01-16_20-25-43/checkpoint_3090/checkpoint-3090"
-        # self.nn_path = "/home/edoardo/ray_results/tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00002_2_cost_fn=2,tau=0.001_2021-01-16_20-33-36/checkpoint_3334/checkpoint-3334"
-        # self.nn_path = "/home/edoardo/ray_results/tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00000_0_cost_fn=0,tau=0.001_2021-01-16_20-25-43/checkpoint_193/checkpoint-193"
-        # self.nn_path = "/home/edoardo/ray_results/tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00003_3_cost_fn=0,tau=0.02_2021-01-16_23-08-42/checkpoint_190/checkpoint-190"
-        # self.nn_path = "/home/edoardo/ray_results/tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00004_4_cost_fn=1,tau=0.02_2021-01-16_23-14-15/checkpoint_3334/checkpoint-3334" #not determined
-        # self.nn_path = "/home/edoardo/ray_results/tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00005_5_cost_fn=2,tau=0.02_2021-01-16_23-27-15/checkpoint_3334/checkpoint-3334" #not determined
+        self.nn_path = os.path.join(utils.get_save_dir(),"tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00001_1_cost_fn=1,tau=0.001_2021-01-16_20-25-43/checkpoint_3090/checkpoint-3090")
         # self.tau = 0.001
         self.tau = 0.02
 

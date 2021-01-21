@@ -1,3 +1,4 @@
+import os
 from typing import List, Tuple
 
 import gurobi as grb
@@ -6,6 +7,7 @@ import ray
 import torch
 from ray.rllib.agents.ppo import ppo
 
+import utils
 from training.tune_train_PPO_bouncing_ball import get_PPO_config
 from agents.ray_utils import convert_ray_policy_to_sequential
 from verification.experiments_nn_analysis import Experiment
@@ -29,8 +31,7 @@ class BouncingBallExperiment(Experiment):
         p = Experiment.e(self.env_input_size, 0)
         v = Experiment.e(self.env_input_size, 1)
         self.unsafe_zone: List[Tuple] = [([p, -v, v], np.array([0, 1, 0]))]
-        self.nn_path = "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_c7326_00000_0_2021-01-16_05-43-36/checkpoint_36/checkpoint-36"
-        # self.nn_path = "/home/edoardo/ray_results/tune_PPO_bouncing_ball/PPO_BouncingBall_71684_00004_4_2021-01-18_23-48-21/checkpoint_10/checkpoint-10"
+        self.nn_path = os.path.join(utils.get_save_dir(),"tune_PPO_bouncing_ball/PPO_BouncingBall_c7326_00000_0_2021-01-16_05-43-36/checkpoint_36/checkpoint-36")
 
     @ray.remote
     def post_milp(self, x, nn, output_flag, t, template):
@@ -204,17 +205,6 @@ class BouncingBallExperiment(Experiment):
             input_boundaries = None
             template = np.array([v + p, -v - p, -p])
             return input_boundaries, template
-
-    # def get_nn_old(self):
-    #     config, trainer = get_PPO_trainer(use_gpu=0)
-    #     trainer.restore("/home/edoardo/ray_results/PPO_BouncingBall_2021-01-04_18-58-32smp2ln1g/checkpoint_272/checkpoint-272")
-    #     policy = trainer.get_policy()
-    #     sequential_nn = convert_ray_policy_to_sequential(policy).cpu()
-    #     layers = []
-    #     for l in sequential_nn:
-    #         layers.append(l)
-    #     nn = torch.nn.Sequential(*layers)
-    #     return nn
 
     def get_nn(self):
         config = get_PPO_config(1234)
