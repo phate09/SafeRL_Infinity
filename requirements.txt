@@ -1,0 +1,12 @@
+torch
+plotly
+numpy
+gym
+ray
+orca
+mpmath
+progressbar2
+pypoman
+pyinterval
+matplotlib
+ray[rllib]

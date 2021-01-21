@@ -1,0 +1,8 @@
+.idea/
+/dqn/data/
+/runs/
+*/__pycache__/*
+save/**
+*.so
+*.c
+*.html
