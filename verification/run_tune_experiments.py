@@ -5,6 +5,7 @@ import time
 import ray
 from ray import tune
 
+import utils
 from verification.experiments_nn_analysis import Experiment
 from verification.run_experiment_bouncing_ball import BouncingBallExperiment
 from verification.run_experiment_cartpole import CartpoleExperiment
@@ -215,9 +216,8 @@ if __name__ == '__main__':
             resources_per_trial={"cpu": 1},
             stop={"time_since_restore": 300},
             trial_name_creator=name_group.trial_str_creator,
+            local_dir=utils.get_save_dir(),
             # resume="PROMPT",
             verbose=0,
             log_to_file=True)
-        # df = analysis.results_df
-        # df.to_json(os.path.join(analysis.best_logdir, "experiment_results.json"))
         print(f"Finished trial: {i}/{n_trials}")
