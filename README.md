@@ -34,4 +34,11 @@ run verification/run_tune_experiments.py
 
 The results in tensorboard can be filtered using regular expressions (eg. "bouncing\_ball.* template: 0") on the search bar on the left: 
 
-the name of the experiment contains the name of the problem (bouncing\_ball, cartpole, stopping car), the amount of adversarial noise ("eps", only for stopping\_car), the time steps length for the dynamics of the system ("tau", only for cartpole) and the choice of restriction in order of complexity (0 being box, 1 being the chosen template, and 2 being octagon).
+The name of the experiment contains the name of the problem (bouncing\_ball, cartpole, stopping car), the amount of adversarial noise ("eps", only for stopping\_car), the time steps length for the dynamics of the system ("tau", only for cartpole) and the choice of restriction in order of complexity (0 being box, 1 being the chosen template, and 2 being octagon).
+
+The table in the paper is filled by using some of the metrics reported in tensorboard:
+* max\_t: Avg timesteps
+* seen: Avg polyhedra
+* time\_since\_restore: Avg clock time (s)
+
+![alt text](./images/tensorboard.png "An exmaple of tensorboard screen")
