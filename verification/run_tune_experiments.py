@@ -62,7 +62,7 @@ nn_paths_cartpole = ["tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00000_0_cost_fn=0,
 
 
 def _iter():
-    for problem in ["bouncing_ball","stopping_car", "cartpole"]:  # "bouncing_ball", "stopping_car", "cartpole" "stopping_car"
+    for problem in ["bouncing_ball", "stopping_car", "cartpole"]:  # "bouncing_ball", "stopping_car", "cartpole" "stopping_car"
         for method in ["ora"]:  # "standard", "ora"
             if problem == "bouncing_ball":
                 for tau in [0.1, 0.05]:  # {"tau": tune.grid_search([0.1, 0.05])}
@@ -150,7 +150,7 @@ def run_parameterised_experiment(config):
         else:
             experiment = CartpoleExperiment()
 
-        experiment.nn_path = os.path.join(utils.get_save_dir(),nn_paths_cartpole[other_config["nn_path"]])
+        experiment.nn_path = os.path.join(utils.get_save_dir(), nn_paths_cartpole[other_config["nn_path"]])
         experiment.tau = other_config["tau"]
         if other_config["template"] == 2:  # octagon
             experiment.analysis_template = Experiment.octagon(experiment.env_input_size)
@@ -204,12 +204,12 @@ class NameGroup:
 
 
 if __name__ == '__main__':
-    ray.init(local_mode=False, log_to_driver=False)
+    ray.init(local_mode=True, log_to_driver=False)
     cpu = 7
     trials = list(_iter())
     n_trials = len(trials) - 1
     print(f"Total n of trials: {n_trials}")
-    start_from = 44  # 7 stoppign_car
+    start_from = 99  # 7 stoppign_car
     stop_at = 800
     name_group = NameGroup()
     for i, (problem, method, other_config) in enumerate(trials):

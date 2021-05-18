@@ -1,6 +1,7 @@
 import os
 from typing import List, Tuple
 
+from pyomo.opt import SolverStatus, TerminationCondition
 from ray.rllib.agents.ppo import ppo
 
 import utils
@@ -14,6 +15,7 @@ import numpy as np
 import torch
 from interval import interval, imath
 from environments.cartpole_ray import CartPoleEnv
+import pyomo.environ as pyo
 
 
 class CartpoleExperiment(Experiment):
@@ -36,7 +38,7 @@ class CartpoleExperiment(Experiment):
         # self.use_rounding = False
         self.rounding_value = 1024
         self.time_horizon = 300
-        self.nn_path = os.path.join(utils.get_save_dir(),"tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00001_1_cost_fn=1,tau=0.001_2021-01-16_20-25-43/checkpoint_3090/checkpoint-3090")
+        self.nn_path = os.path.join(utils.get_save_dir(), "tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00001_1_cost_fn=1,tau=0.001_2021-01-16_20-25-43/checkpoint_3090/checkpoint-3090")
         # self.tau = 0.001
         self.tau = 0.02
 
@@ -90,13 +92,41 @@ class CartpoleExperiment(Experiment):
         gurobi_model.addConstr(z[3] == theta_dot_prime, name=f"dyna_constr_4")
         return z
 
+    def apply_dynamic_pyo(self, input, model: pyo.ConcreteModel, thetaacc, xacc, env_input_size, action):
+        '''
+
+        :param costheta: gurobi variable containing the range of costheta values
+        :param sintheta: gurobi variable containin the range of sintheta values
+        :param input:
+        :param gurobi_model:
+        :param t:
+        :return:
+        '''
+
+        tau = self.tau  # 0.001  # seconds between state updates
+        x = input[0]
+        x_dot = input[1]
+        theta = input[2]
+        theta_dot = input[3]
+        z = pyo.Var(range(env_input_size), name=f"x_prime", within=pyo.Reals)
+        model.add_component("x_prime", z)
+        x_prime = x + tau * x_dot
+        x_dot_prime = x_dot + tau * xacc
+        theta_prime = theta + tau * theta_dot
+        theta_dot_prime = theta_dot + tau * thetaacc
+        model.dynamic_constraints = pyo.ConstraintList()
+        model.dynamic_constraints.add(expr=z[0] == x_prime)
+        model.dynamic_constraints.add(expr=z[1] == x_dot_prime)
+        model.dynamic_constraints.add(expr=z[2] == theta_prime)
+        model.dynamic_constraints.add(expr=z[3] == theta_dot_prime)
+        return z
+
     @staticmethod
-    def get_sin_cos_table(max_theta, min_theta, max_theta_dot, min_theta_dot, action):
+    def get_sin_cos_table(max_theta, min_theta, max_theta_dot, min_theta_dot, action, step_thetaacc=0.3):
         assert min_theta <= max_theta, f"min_theta = {min_theta},max_theta={max_theta}"
         assert min_theta_dot <= max_theta_dot, f"min_theta_dot = {min_theta_dot},max_theta_dot={max_theta_dot}"
         step_theta = 0.1
         step_theta_dot = 0.1
-        step_thetaacc = 0.3
         min_theta = max(min_theta, -math.pi / 2)
         max_theta = min(max_theta, math.pi / 2)
         split_theta1 = np.arange(min(min_theta, 0), min(max_theta, 0), step_theta)
@@ -115,29 +145,33 @@ class CartpoleExperiment(Experiment):
                 ub_theta_dot = min(t_dot + step_theta_dot, max_theta_dot)
                 lb = theta
                 ub = min(theta + step_theta, max_theta)
-                split.append((interval([lb_theta_dot, ub_theta_dot]), interval([lb, ub])))
+                split.append(((min(lb_theta_dot, ub_theta_dot), max(lb_theta_dot, ub_theta_dot)), (min(lb, ub), max(lb, ub))))
         sin_cos_table = []
         while (len(split)):
             theta_dot, theta = split.pop()
-            sintheta = imath.sin(theta)
-            costheta = imath.cos(theta)
-            temp = (force + env.polemass_length * theta_dot ** 2 * sintheta) / env.total_mass
+            theta_interval = interval([theta[0], theta[1]])
+            theta_dot_interval = interval([theta_dot[0], theta_dot[1]])
+            sintheta = imath.sin(theta_interval)
+            costheta = imath.cos(theta_interval)
+            temp = (force + env.polemass_length * theta_dot_interval ** 2 * sintheta) / env.total_mass
             thetaacc: interval = (env.gravity * sintheta - costheta * temp) / (env.length * (4.0 / 3.0 - env.masspole * costheta ** 2 / env.total_mass))
             xacc = temp - env.polemass_length * thetaacc * costheta / env.total_mass
             if thetaacc[0].sup - thetaacc[0].inf > step_thetaacc:
                 # split theta theta_dot
-                mid_theta = (theta[0].sup + theta[0].inf) / 2
-                mid_theta_dot = (theta_dot[0].sup + theta_dot[0].inf) / 2
-                theta_1 = interval([theta[0].inf, mid_theta])
-                theta_2 = interval([mid_theta, theta[0].sup])
-                theta_dot_1 = interval([theta_dot[0].inf, mid_theta_dot])
-                theta_dot_2 = interval([mid_theta_dot, theta_dot[0].sup])
-                split.append((theta_1, theta_dot_1))
-                split.append((theta_1, theta_dot_2))
-                split.append((theta_2, theta_dot_1))
-                split.append((theta_2, theta_dot_2))
+                if (theta[1] - theta[0]) > (theta_dot[1] - theta_dot[0]):  # split theta
+                    mid_theta = (theta[0] + theta[1]) / 2
+                    theta_1 = (theta[0], mid_theta)
+                    theta_2 = (mid_theta, theta[1])
+                    split.append((theta_1, theta_dot))
+                    split.append((theta_2, theta_dot))
+                else:  # split theta_dot
+                    mid_theta_dot = (theta_dot[1] + theta_dot[0]) / 2
+                    theta_dot_1 = (theta_dot[0], mid_theta_dot)
+                    theta_dot_2 = (mid_theta_dot, theta_dot[1])
+                    split.append((theta, theta_dot_1))
+                    split.append((theta, theta_dot_2))
             else:
-                sin_cos_table.append((theta, theta_dot, thetaacc, xacc))
+                sin_cos_table.append((theta, theta_dot,  (thetaacc[0].inf,thetaacc[0].sup), (xacc[0].inf,xacc[0].sup)))
         return sin_cos_table
 
     @staticmethod
@@ -157,6 +191,34 @@ class CartpoleExperiment(Experiment):
         gurobi_model.setObjective(input[3].sum(), grb.GRB.MINIMIZE)
         gurobi_model.optimize()
         min_theta_dot = gurobi_model.getVars()[3].X
+        return max_theta, min_theta, max_theta_dot, min_theta_dot
+
+    @staticmethod
+    def get_theta_bounds_pyo(model: pyo.ConcreteModel, input):
+        if model.component("obj"):
+            model.del_component(model.obj)
+        model.obj = pyo.Objective(expr=input[2], sense=pyo.maximize)
+        result = Experiment.solve(model, solver=Experiment.use_solver)
+        assert (result.solver.status == SolverStatus.ok) and (result.solver.termination_condition == TerminationCondition.optimal)
+        max_theta = pyo.value(model.obj)
+
+        model.del_component(model.obj)
+        model.obj = pyo.Objective(expr=input[2], sense=pyo.minimize)
+        result = Experiment.solve(model, solver=Experiment.use_solver)
+        assert (result.solver.status == SolverStatus.ok) and (result.solver.termination_condition == TerminationCondition.optimal)
+        min_theta = pyo.value(model.obj)
+
+        model.del_component(model.obj)
+        model.obj = pyo.Objective(expr=input[3], sense=pyo.maximize)
+        result = Experiment.solve(model, solver=Experiment.use_solver)
+        assert (result.solver.status == SolverStatus.ok) and (result.solver.termination_condition == TerminationCondition.optimal)
+        max_theta_dot = pyo.value(model.obj)
+
+        model.del_component(model.obj)
+        model.obj = pyo.Objective(expr=input[3], sense=pyo.minimize)
+        result = Experiment.solve(model, solver=Experiment.use_solver)
+        assert (result.solver.status == SolverStatus.ok) and (result.solver.termination_condition == TerminationCondition.optimal)
+        min_theta_dot = pyo.value(model.obj)
         return max_theta, min_theta, max_theta_dot, min_theta_dot
 
     @staticmethod
@@ -188,17 +250,17 @@ class CartpoleExperiment(Experiment):
         xacc_ub = 0
         for i in range(k):
             theta_interval, theta_dot_interval, theta_acc_interval, xacc_interval = sin_cos_table[i]
-            theta_lb += theta_interval[0].inf - theta_interval[0].inf * zs[i]
-            theta_ub += theta_interval[0].sup - theta_interval[0].sup * zs[i]
-            theta_dot_lb += theta_dot_interval[0].inf - theta_dot_interval[0].inf * zs[i]
-            theta_dot_ub += theta_dot_interval[0].sup - theta_dot_interval[0].sup * zs[i]
+            theta_lb += theta_interval[0] - theta_interval[0] * zs[i]
+            theta_ub += theta_interval[1] - theta_interval[1] * zs[i]
+            theta_dot_lb += theta_dot_interval[0] - theta_dot_interval[0] * zs[i]
+            theta_dot_ub += theta_dot_interval[1] - theta_dot_interval[1] * zs[i]
 
-            thetaacc_lb += theta_acc_interval[0].inf - theta_acc_interval[0].inf * zs[i]
-            thetaacc_ub += theta_acc_interval[0].sup - theta_acc_interval[0].sup * zs[i]
+            thetaacc_lb += theta_acc_interval[0] - theta_acc_interval[0] * zs[i]
+            thetaacc_ub += theta_acc_interval[1] - theta_acc_interval[1] * zs[i]
 
-            xacc_lb += xacc_interval[0].inf - xacc_interval[0].inf * zs[i]
-            xacc_ub += xacc_interval[0].sup - xacc_interval[0].sup * zs[i]
-
+            xacc_lb += xacc_interval[0] - xacc_interval[0] * zs[i]
+            xacc_ub += xacc_interval[1] - xacc_interval[1] * zs[i]
+        # eps = 1e-9
         gurobi_model.addConstr(theta >= theta_lb, name=f"theta_guard1")
         gurobi_model.addConstr(theta <= theta_ub, name=f"theta_guard2")
         gurobi_model.addConstr(theta_dot >= theta_dot_lb, name=f"theta_dot_guard1")
@@ -211,7 +273,77 @@ class CartpoleExperiment(Experiment):
 
         gurobi_model.update()
         gurobi_model.optimize()
-        assert gurobi_model.status == 2, "LP wasn't optimally solved"
+        if gurobi_model.status == 4:
+            gurobi_model.setParam("DualReductions", 0)
+            gurobi_model.update()
+            gurobi_model.optimize()
+        assert gurobi_model.status == 2, f"LP wasn't optimally solved. gurobi status {gurobi_model.status}"
+        return thetaacc, xacc
+
+    @staticmethod
+    def generate_angle_milp_pyo(model: pyo.ConcreteModel, input, sin_cos_table: List[Tuple]):
+        """MILP method
+        input: theta, thetadot
+        output: thetadotdot, xdotdot (edited)
+        l_{theta, i}, l_{thatdot,i}, l_{thetadotdot, i}, l_{xdotdot, i}, u_....
+        sum_{i=1}^k l_{x,i} - l_{x,i}*z_i <= x <= sum_{i=1}^k u_{x,i} - u_{x,i}*z_i, for each variable x
+        sum_{i=1}^k l_{theta,i} - l_{theta,i}*z_i <= theta <= sum_{i=1}^k u_{theta,i} - u_{theta,i}*z_i
+        """
+        # gurobi_model.setParam('OptimalityTol', 1e-6)
+        # gurobi_model.setParam('FeasibilityTol', 1e-6)
+        # gurobi_model.setParam('IntFeasTol', 1e-9)
+        theta = input[2]
+        theta_dot = input[3]
+        k = len(sin_cos_table)
+        pyo.Var()
+        thetaacc = pyo.Var(name=f"thetaacc", within=pyo.Reals)
+        model.add_component("thetaacc", thetaacc)
+        xacc = pyo.Var(name=f"xacc", within=pyo.Reals)
+        model.add_component("xacc", xacc)
+        zs = pyo.Var(range(k), name=f"z", within=pyo.Integers, bounds=(0, 1))
+        model.add_component("angle_section", zs)
+        model.angle_constraints = pyo.ConstraintList()
+        model.angle_constraints.add(expr=k - 1 == sum([zs[i] for i in range(k)]))
+        theta_lb = 0
+        theta_ub = 0
+        theta_dot_lb = 0
+        theta_dot_ub = 0
+        thetaacc_lb = 0
+        thetaacc_ub = 0
+        xacc_lb = 0
+        xacc_ub = 0
+        round_value = 2 ** 20
+        for i in range(k):
+            theta_interval, theta_dot_interval, theta_acc_interval, xacc_interval = sin_cos_table[i]
+            theta_inf = theta_interval[0].inf
+            theta_sup = theta_interval[0].sup
+            theta_dot_inf = theta_dot_interval[0].inf
+            theta_dot_sup = theta_dot_interval[0].sup
+            theta_lb += theta_inf - theta_inf * zs[i]
+            theta_ub += theta_sup - theta_sup * zs[i]
+            theta_dot_lb += theta_dot_inf - theta_dot_inf * zs[i]
+            theta_dot_ub += theta_dot_sup - theta_dot_sup * zs[i]
+
+            theta_acc_interval__inf = theta_acc_interval[0].inf
+            theta_acc_interval__sup = theta_acc_interval[0].sup
+            xacc_interval__inf = xacc_interval[0].inf
+            xacc_interval__sup = xacc_interval[0].sup
+
+            thetaacc_lb += theta_acc_interval__inf - theta_acc_interval__inf * zs[i]
+            thetaacc_ub += theta_acc_interval__sup - theta_acc_interval__sup * zs[i]
+            xacc_lb += xacc_interval__inf - xacc_interval__inf * zs[i]
+            xacc_ub += xacc_interval__sup - xacc_interval__sup * zs[i]
+
+        model.angle_constraints.add(expr=theta >= theta_lb)
+        model.angle_constraints.add(expr=theta <= theta_ub)
+        model.angle_constraints.add(expr=theta_dot >= theta_dot_lb)
+        model.angle_constraints.add(expr=theta_dot <= theta_dot_ub)
+
+        model.angle_constraints.add(expr=thetaacc >= thetaacc_lb)
+        model.angle_constraints.add(expr=thetaacc <= thetaacc_ub)
+        model.angle_constraints.add(expr=xacc >= xacc_lb)
+        model.angle_constraints.add(expr=xacc <= xacc_ub)
+
         return thetaacc, xacc
 
     def plot(self, vertices_list, template, template_2d):
@@ -269,6 +401,7 @@ class CartpoleExperiment(Experiment):
         for l in sequential_nn:
             layers.append(l)
         nn = torch.nn.Sequential(*layers)
+        nn.double()
         # ray.shutdown()
         return nn
 
