@@ -211,7 +211,7 @@ class CartpoleExperiment(Experiment):
 
         gurobi_model.update()
         gurobi_model.optimize()
-        # assert gurobi_model.status == 2, "LP wasn't optimally solved"
+        assert gurobi_model.status == 2, "LP wasn't optimally solved"
         return thetaacc, xacc
 
     def plot(self, vertices_list, template, template_2d):

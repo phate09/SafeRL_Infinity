@@ -1,6 +1,8 @@
+import os
+
 import gurobi as grb
 import ray
-
+import utils
 from verification.experiments_nn_analysis import Experiment
 from verification.run_experiment_cartpole import CartpoleExperiment
 
@@ -10,6 +12,8 @@ class ORACartpoleExperiment(CartpoleExperiment):
         super().__init__()
         self.post_fn_remote = self.post_milp
         self.time_horizon = 300
+        # self.nn_path = os.path.join(utils.get_save_dir(), "tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00001_1_cost_fn=1,tau=0.001_2021-01-16_20-25-43/checkpoint_3090/checkpoint-3090")
+        self.nn_path = os.path.join(utils.get_save_dir(), "tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00000_0_cost_fn=0,tau=0.001_2021-01-16_20-25-43/checkpoint_193/checkpoint-193")
 
     @ray.remote
     def post_milp(self, x, nn, output_flag, t, template):
@@ -38,5 +42,6 @@ class ORACartpoleExperiment(CartpoleExperiment):
 
 
 if __name__ == '__main__':
+    ray.init(log_to_driver=False,local_mode=False)
     experiment = ORACartpoleExperiment()
-    experiment.run_experiment(local_mode=False)
+    experiment.run_experiment()

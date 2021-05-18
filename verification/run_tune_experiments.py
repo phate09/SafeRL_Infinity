@@ -10,6 +10,8 @@ from verification.experiments_nn_analysis import Experiment
 from verification.run_experiment_bouncing_ball import BouncingBallExperiment
 from verification.run_experiment_cartpole import CartpoleExperiment
 from verification.run_experiment_stopping_car import StoppingCarExperiment
+from verification.run_ora_bouncing_ball import ORABouncingBallExperiment
+from verification.run_ora_cartpole import ORACartpoleExperiment
 from verification.run_ora_stopping_car import ORAStoppingCarExperiment
 
 nn_paths_bouncing_ball = [
@@ -60,10 +62,10 @@ nn_paths_cartpole = ["tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00000_0_cost_fn=0,
 
 
 def _iter():
-    for problem in ["bouncing_ball", "stopping_car"]:  # "bouncing_ball", "stopping_car", "cartpole"
-        for method in ["standard"]:  # , "ora"
+    for problem in ["bouncing_ball","stopping_car", "cartpole"]:  # "bouncing_ball", "stopping_car", "cartpole" "stopping_car"
+        for method in ["ora"]:  # "standard", "ora"
             if problem == "bouncing_ball":
-                for tau in [0.1]:  # {"tau": tune.grid_search([0.1, 0.05])}
+                for tau in [0.1, 0.05]:  # {"tau": tune.grid_search([0.1, 0.05])}
                     for template in [0, 2]:
                         for nn_path in range(0, min(100, len(nn_paths_bouncing_ball))):
                             yield problem, method, {"tau": tau, "template": template, "nn_path": nn_path}
@@ -73,8 +75,8 @@ def _iter():
                         for nn_path in range(0, min(100, len(nn_paths_stopping_car))):
                             yield problem, method, {"epsilon_input": epsilon, "template": template, "nn_path": nn_path, "method": method}
             else:
-                for tau in [0.001]:  # "tau": tune.grid_search([0.001, 0.02, 0.005]
-                    for template in [1, 0, 2]:
+                for tau in [0.001, 0.02]:  # "tau": tune.grid_search([0.001, 0.02, 0.005]
+                    for template in [1]:  # 0,1,2
                         for nn_path in range(0, min(100, len(nn_paths_cartpole))):
                             yield problem, method, {"tau": tau, "template": template, "nn_path": nn_path}
 
@@ -89,7 +91,10 @@ def run_parameterised_experiment(config):
     problem, method, other_config = config["main_params"]
     n_workers = config["n_workers"]
     if problem == "bouncing_ball":
-        experiment = BouncingBallExperiment()
+        if method == "ora":
+            experiment = ORABouncingBallExperiment()
+        else:
+            experiment = BouncingBallExperiment()
         experiment.nn_path = os.path.join(utils.get_save_dir(), nn_paths_bouncing_ball[other_config["nn_path"]])
         experiment.tau = other_config["tau"]
         if other_config["template"] == 2:  # octagon
@@ -140,8 +145,12 @@ def run_parameterised_experiment(config):
             experiment.update_progress_fn = update_progress
             elapsed_seconds, safe, max_t = experiment.run_experiment()
     else:
-        experiment = CartpoleExperiment()
-        experiment.nn_path = nn_paths_cartpole[other_config["nn_path"]]
+        if method == "ora":
+            experiment = ORACartpoleExperiment()
+        else:
+            experiment = CartpoleExperiment()
+
+        experiment.nn_path = os.path.join(utils.get_save_dir(),nn_paths_cartpole[other_config["nn_path"]])
         experiment.tau = other_config["tau"]
         if other_config["template"] == 2:  # octagon
             experiment.analysis_template = Experiment.octagon(experiment.env_input_size)
@@ -200,10 +209,11 @@ if __name__ == '__main__':
     trials = list(_iter())
     n_trials = len(trials) - 1
     print(f"Total n of trials: {n_trials}")
-    start_from = 0  # 7 stoppign_car
+    start_from = 44  # 7 stoppign_car
+    stop_at = 800
     name_group = NameGroup()
     for i, (problem, method, other_config) in enumerate(trials):
-        if i < start_from:
+        if i < start_from or i >= stop_at:
             continue
         print(f"Starting trial: {i}/{n_trials}")
         analysis = tune.run(

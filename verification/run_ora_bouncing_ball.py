@@ -1,6 +1,7 @@
 import gurobi as grb
 import ray
-
+import utils
+import os
 from verification.experiments_nn_analysis import Experiment
 from verification.run_experiment_bouncing_ball import BouncingBallExperiment
 
@@ -10,6 +11,9 @@ class ORABouncingBallExperiment(BouncingBallExperiment):
         super().__init__()
         self.post_fn_remote = self.post_milp
         self.before_start_fn = self.before_start
+        self.show_progress_plot = False
+        # self.nn_path = os.path.join(utils.get_save_dir(), "tune_PPO_bouncing_ball/PPO_BouncingBall_c7326_00000_0_2021-01-16_05-43-36/checkpoint_36/checkpoint-36")
+        self.nn_path = os.path.join(utils.get_save_dir(), "tune_PPO_bouncing_ball/PPO_BouncingBall_fb929_00003_3_2021-01-19_00-20-45/checkpoint_10/checkpoint-10")
 
     def generate_nn_polyhedral_guard(self, nn, chosen_action, output_flag):
         gurobi_model = grb.Model()
@@ -17,7 +21,7 @@ class ORABouncingBallExperiment(BouncingBallExperiment):
         gurobi_model.setParam('Threads', 2)
         observation = gurobi_model.addMVar(shape=(2,), lb=float("-inf"), ub=float("inf"), name="observation")
         Experiment.generate_nn_guard(gurobi_model, observation, nn, action_ego=chosen_action)
-        observable_template = Experiment.octagon(2)
+        observable_template = Experiment.box(2)
         # self.env_input_size = 2
         observable_result = self.optimise(observable_template, gurobi_model, observation)
         # self.env_input_size = 6
@@ -68,7 +72,7 @@ class ORABouncingBallExperiment(BouncingBallExperiment):
         if feasible11:
             Experiment.generate_region_constraints(gurobi_model, observable_template_action1, input, observable_result_action1, 2)
             gurobi_model.optimize()
-            feasible12 = gurobi_model.status
+            feasible12 = gurobi_model.status==2
             # feasible12 = self.generate_nn_guard(gurobi_model, input, nn, action_ego=1)  # check for action =1 over input (not z!)
             if feasible12:
                 # apply dynamic
@@ -86,7 +90,7 @@ class ORABouncingBallExperiment(BouncingBallExperiment):
         if feasible21:
             Experiment.generate_region_constraints(gurobi_model, observable_template_action1, input, observable_result_action1, 2)
             gurobi_model.optimize()
-            feasible22 = gurobi_model.status
+            feasible22 = gurobi_model.status==2
             # feasible22 = self.generate_nn_guard(gurobi_model, input, nn, action_ego=1)  # check for action =1 over input (not z!)
             if feasible22:
                 # apply dynamic
@@ -104,7 +108,7 @@ class ORABouncingBallExperiment(BouncingBallExperiment):
         if feasible11_alt:
             Experiment.generate_region_constraints(gurobi_model, observable_template_action0, input, observable_result_action0, 2)
             gurobi_model.optimize()
-            feasible12_alt = gurobi_model.status
+            feasible12_alt = gurobi_model.status==2
             # feasible12_alt = self.generate_nn_guard(gurobi_model, input, nn, action_ego=0)  # check for action = 0 over input (not z!)
             if feasible12_alt:
                 # apply dynamic
@@ -123,7 +127,7 @@ class ORABouncingBallExperiment(BouncingBallExperiment):
         if feasible21_alt:
             Experiment.generate_region_constraints(gurobi_model, observable_template_action0, input, observable_result_action0, 2)
             gurobi_model.optimize()
-            feasible22_alt = gurobi_model.status
+            feasible22_alt = gurobi_model.status==2
             # feasible22_alt = self.generate_nn_guard(gurobi_model, input, nn, action_ego=0)  # check for action = 0 over input (not z!)
             if feasible22_alt:
                 # apply dynamic
@@ -153,6 +157,6 @@ class ORABouncingBallExperiment(BouncingBallExperiment):
 
 
 if __name__ == '__main__':
-    ray.init(log_to_driver=False)
+    ray.init(log_to_driver=False,local_mode=True)
     experiment = ORABouncingBallExperiment()
     experiment.run_experiment()
