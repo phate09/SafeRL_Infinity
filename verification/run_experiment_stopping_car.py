@@ -32,7 +32,7 @@ class StoppingCarExperiment(Experiment):
         # self.n_workers = 1
         self.rounding_value = 2 ** 10
         self.use_rounding = False
-        self.time_horizon = 400
+        self.time_horizon = 40000
         self.unsafe_zone: List[Tuple] = [(distance, np.array([collision_distance]))]
         self.input_epsilon = 0
         # self.nn_path = os.path.join(utils.get_save_dir(),"tune_PPO_stopping_car/PPO_StoppingCar_acc24_00000_0_cost_fn=0,epsilon_input=0_2021-01-21_02-30-49/checkpoint_39/checkpoint-39")

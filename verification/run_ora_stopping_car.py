@@ -54,7 +54,7 @@ class ORAStoppingCarExperiment(StoppingCarExperiment):
 
             Experiment.generate_region_constraints(gurobi_model, observable_template, observation, observable_result, 2)
             gurobi_model.optimize()
-            feasible_action = gurobi_model.status
+            feasible_action = gurobi_model.status==2
             if feasible_action:
                 # apply dynamic
                 # x_prime_results = self.optimise(template, gurobi_model, input)  # h representation

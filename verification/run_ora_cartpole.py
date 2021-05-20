@@ -16,22 +16,50 @@ class ORACartpoleExperiment(CartpoleExperiment):
     def __init__(self):
         super().__init__()
         self.post_fn_remote = self.post_milp
+        self.before_start_fn = self.before_start
         self.time_horizon = 300
         self.use_rounding = False
         # self.nn_path = os.path.join(utils.get_save_dir(), "tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00001_1_cost_fn=1,tau=0.001_2021-01-16_20-25-43/checkpoint_3090/checkpoint-3090")
         self.nn_path = os.path.join(utils.get_save_dir(), "tune_PPO_cartpole/PPO_CartPoleEnv_0205e_00000_0_cost_fn=0,tau=0.001_2021-01-16_20-25-43/checkpoint_193/checkpoint-193")
+
+    def generate_nn_polyhedral_guard(self, nn, chosen_action, output_flag):
+        gurobi_model = grb.Model()
+        gurobi_model.setParam('OutputFlag', output_flag)
+        gurobi_model.setParam('Threads', 2)
+        observation = gurobi_model.addMVar(shape=(self.env_input_size,), lb=float("-inf"), ub=float("inf"), name="observation")
+        Experiment.generate_nn_guard(gurobi_model, observation, nn, action_ego=chosen_action)
+        # observable_template = self.get_template(1)
+        observable_template = self.analysis_template
+        # self.env_input_size = 2
+        observable_result = self.optimise(observable_template, gurobi_model, observation)
+        # self.env_input_size = 6
+        return observable_template, observable_result
+
+    def before_start(self, nn):
+        observable_templates = []
+        observable_results = []
+        for chosen_action in range(2):
+            observable_template, observable_result = self.generate_nn_polyhedral_guard(nn, chosen_action, False)
+            observable_templates.append(observable_template)
+            observable_results.append(observable_result)
+        self.observable_templates = observable_templates
+        self.observable_results = observable_results
 
     @ray.remote
     def post_milp(self, x, nn, output_flag, t, template):
         """milp method"""
         post = []
         for chosen_action in range(2):
+            observable_template = self.observable_templates[chosen_action]
+            observable_result = self.observable_results[chosen_action]
             if USE_GUROBI:
                 gurobi_model = grb.Model()
                 gurobi_model.setParam('OutputFlag', output_flag)
                 gurobi_model.setParam('Threads', 2)
                 input = Experiment.generate_input_region(gurobi_model, template, x, self.env_input_size)
-                feasible_action = CartpoleExperiment.generate_nn_guard(gurobi_model, input, nn, action_ego=chosen_action, M=1e4)
+                Experiment.generate_region_constraints(gurobi_model, observable_template, input, observable_result, env_input_size=self.env_input_size)
+                gurobi_model.optimize()
+                feasible_action = gurobi_model.status == 2
                 if feasible_action:
                     max_theta, min_theta, max_theta_dot, min_theta_dot = self.get_theta_bounds(gurobi_model, input)
                     sin_cos_table = self.get_sin_cos_table(max_theta, min_theta, max_theta_dot, min_theta_dot, action=chosen_action, step_thetaacc=100)
